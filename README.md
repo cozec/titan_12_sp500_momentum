@@ -1,5 +1,8 @@
 # Titan-12 Momentum Rotation
 
+## Referece:
+https://www.xiaohongshu.com/explore/6a01f225000000003700eb1c?app_platform=ios&app_version=9.29&share_from_user_hidden=true&xsec_source=app_share&type=normal&xsec_token=CBUD1EVtTBvYvwum6k6I8QLd6l_uIs6tIanyR4l6dTmd4=&author_share=1&xhsshare=CopyLink&shareRedId=ODZFODc1Rzk2NzUyOTgwNjY0OTc1SD5P&apptime=1778708999&share_id=a512da2b2c7d4303b83d32d6095d0734
+
 Titan-12 Momentum Rotation is a monthly S&P 500 rotation backtest. On the first
 trading day of each month, it ranks eligible S&P 500 stocks by a weighted
 12-month momentum score, buys the top 3 names at equal weight, and holds them
