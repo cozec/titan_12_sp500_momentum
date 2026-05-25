@@ -27,6 +27,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Checkout Nasdaq strategy repo
+        uses: actions/checkout@v6
+        with:
+          repository: cozec/momentum_6month_claude
+          path: nasdaq_repo
+          token: ${{ secrets.NASDAQ_REPO_TOKEN || github.token }}
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
@@ -34,7 +41,9 @@ jobs:
           cache: "pip"
 
       - name: Install Python dependencies
-        run: pip install -r requirements.txt
+        run: |
+          pip install -r requirements.txt
+          pip install -r nasdaq_repo/nasdaq100_momentum_backtest/requirements.txt
 
       - name: Decide whether to run
         id: trading_day
@@ -48,6 +57,51 @@ jobs:
       - name: Build historical membership
         if: steps.trading_day.outputs.should_run == 'true'
         run: python scripts/build_wikipedia_sp500_membership.py --output data/sp500_membership.csv
+
+      - name: Run Nasdaq overlap source backtest
+        if: steps.trading_day.outputs.should_run == 'true'
+        working-directory: nasdaq_repo/nasdaq100_momentum_backtest
+        run: |
+          if [ -n "${{ inputs.end_date }}" ]; then
+            END_DATE="${{ inputs.end_date }}"
+          else
+            END_DATE="$(TZ=America/New_York date +%F)"
+          fi
+          python - <<PY
+          import os
+          import sys
+          from pathlib import Path
+
+          import pandas as pd
+
+          sys.path.insert(0, os.getcwd())
+
+          from src.backtest import run_backtest
+          from src.config import BacktestConfig, OUTPUTS_DIR
+          from src.metrics import calculate_summary_stats
+
+          config = BacktestConfig(
+              start_date="2016-01-01",
+              end_date="${END_DATE}",
+              top_n=3,
+              lookback_months=6,
+              benchmark="QQQ",
+              secondary_benchmark="TQQQ",
+              score_method="average_monthly_return",
+              transaction_cost_bps=0.0,
+              slippage_bps=0.0,
+              initial_capital=100_000.0,
+              use_historical_membership=True,
+          )
+          results = run_backtest(config)
+          output_dir = Path(OUTPUTS_DIR)
+          output_dir.mkdir(parents=True, exist_ok=True)
+          results["selections"].to_csv(output_dir / "monthly_selections.csv", index=False)
+          results["portfolio_returns"].to_csv(output_dir / "portfolio_returns.csv", index=False)
+          calculate_summary_stats(results["portfolio_returns"]).to_csv(output_dir / "summary_stats.csv")
+          open_position = results.get("open_position", pd.DataFrame())
+          open_position.to_csv(output_dir / "open_rebalance_picks.csv", index=False)
+          PY
 
       - name: Run backtest
         if: steps.trading_day.outputs.should_run == 'true'
@@ -65,6 +119,9 @@ jobs:
 
       - name: Export static dashboard
         if: steps.trading_day.outputs.should_run == 'true'
+        env:
+          NASDAQ_SELECTIONS_PATH: ${{ github.workspace }}/nasdaq_repo/nasdaq100_momentum_backtest/outputs/monthly_selections.csv
+          NASDAQ_OPEN_PATH: ${{ github.workspace }}/nasdaq_repo/nasdaq100_momentum_backtest/outputs/open_rebalance_picks.csv
         run: python scripts/export_static_dashboard.py --output-dir public
 
       - name: Deploy to Cloudflare Pages

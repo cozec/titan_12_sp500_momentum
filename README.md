@@ -74,7 +74,7 @@ For cross-project diversification against the sister Nasdaq strategy, the
 research summary includes an optional overlay:
 
 1. Read Nasdaq top-3 picks from
-   `/Users/adam/project/momentum_6m/nasdaq100_momentum_backtest/outputs/monthly_selections.csv`.
+   `/Users/adam/project/momentum_6m_claude/nasdaq100_momentum_backtest/outputs/monthly_selections.csv`.
 2. For each matching S&P 500 rebalance date, skip any S&P 500 Titan-12 ticker
    that also appears in the Nasdaq top 3.
 3. Backfill from the next-highest S&P 500 Titan-12 ranked names until 3 names
@@ -136,9 +136,11 @@ The workflow runs after the US market close on weekdays, checks whether the
 date is the first NYSE-style trading day of the month, then:
 
 1. Builds the approximate Wikipedia historical S&P 500 membership file.
-2. Runs the historical-membership backtest through the current date.
-3. Exports the dashboard to `public/`.
-4. Deploys `public/` to Cloudflare Pages with Wrangler direct upload.
+2. Checks out `cozec/momentum_6month_claude` and runs the Nasdaq source
+   backtest to generate overlap exclusions.
+3. Runs the S&P 500 historical-membership backtest through the current date.
+4. Exports the dashboard to `public/`.
+5. Deploys `public/` to Cloudflare Pages with Wrangler direct upload.
 
 Add these GitHub repository secrets before enabling the workflow:
 
@@ -149,6 +151,8 @@ CLOUDFLARE_PAGES_PROJECT_NAME
 ```
 
 The Cloudflare API token needs `Account > Cloudflare Pages > Edit` permission.
+If the Nasdaq repo is private, also add `NASDAQ_REPO_TOKEN` with read access to
+`cozec/momentum_6month_claude`; public repos do not need this extra token.
 You can also run the workflow manually from GitHub Actions with
 `force_update=true`.
 

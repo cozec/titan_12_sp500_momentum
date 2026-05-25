@@ -34,11 +34,20 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 STATIC_DIR = PROJECT_ROOT / "webapp" / "static"
 OUTPUT_DIR = PROJECT_ROOT / "outputs"
 CHART_DIR = OUTPUT_DIR / "charts"
+DEFAULT_NASDAQ_ROOT = Path(
+    "/Users/adam/project/momentum_6m_claude/nasdaq100_momentum_backtest"
+)
 NASDAQ_SELECTIONS_PATH = Path(
-    "/Users/adam/project/momentum_6m/nasdaq100_momentum_backtest/outputs/monthly_selections.csv"
+    os.environ.get(
+        "NASDAQ_SELECTIONS_PATH",
+        DEFAULT_NASDAQ_ROOT / "outputs" / "monthly_selections.csv",
+    )
 )
 NASDAQ_OPEN_PATH = Path(
-    "/Users/adam/project/momentum_6m/nasdaq100_momentum_backtest/outputs/open_rebalance_picks.csv"
+    os.environ.get(
+        "NASDAQ_OPEN_PATH",
+        DEFAULT_NASDAQ_ROOT / "outputs" / "open_rebalance_picks.csv",
+    )
 )
 
 
@@ -187,10 +196,26 @@ def _nasdaq_excluded_open() -> dict[str, object]:
     """Return current Nasdaq overlap exclusions and adjusted S&P picks."""
 
     excluded: list[str] = []
+    open_picks = _latest_open()
+    open_date = pd.Timestamp(open_picks[0]["date"]).normalize() if open_picks else None
     if NASDAQ_OPEN_PATH.exists():
         ndx_open = pd.read_csv(NASDAQ_OPEN_PATH)
         excluded = ndx_open.sort_values("rank")["ticker"].astype(str).tolist()
-    open_picks = _latest_open()
+    elif NASDAQ_SELECTIONS_PATH.exists() and open_date is not None:
+        ndx_selections = pd.read_csv(NASDAQ_SELECTIONS_PATH, parse_dates=["rebalance_date"])
+        dates = sorted(
+            date
+            for date in ndx_selections["rebalance_date"].dropna().unique()
+            if pd.Timestamp(date).normalize() <= open_date
+        )
+        if dates:
+            latest_date = dates[-1]
+            excluded = (
+                ndx_selections[ndx_selections["rebalance_date"].eq(latest_date)]
+                .sort_values("rank")["ticker"]
+                .astype(str)
+                .tolist()
+            )
     if not excluded:
         return {"excluded": excluded, "adjusted": open_picks}
     if not open_picks:
