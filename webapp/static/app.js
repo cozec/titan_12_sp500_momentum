@@ -156,12 +156,23 @@ async function load() {
   refreshLabel.textContent = 'Loading…';
   refreshIcon.classList.add('animate-spin');
   try {
-    let resp = await fetch('/api/dashboard', { cache: 'no-store' });
-    if (!resp.ok) {
-      resp = await fetch('/dashboard.json', { cache: 'no-store' });
+    const fetchJson = async (url) => {
+      const resp = await fetch(url, { cache: 'no-store' });
+      const text = await resp.text();
+      if (!resp.ok) throw new Error(`HTTP ${resp.status} from ${url}`);
+      try {
+        return JSON.parse(text);
+      } catch (e) {
+        throw new Error(`Non-JSON response from ${url}`);
+      }
+    };
+
+    let data;
+    try {
+      data = await fetchJson('/api/dashboard');
+    } catch (e) {
+      data = await fetchJson('/dashboard.json');
     }
-    if (!resp.ok) throw new Error(`HTTP ${resp.status} while loading dashboard data`);
-    const data = await resp.json();
     renderStats(data);
     renderOverlay(data);
     renderHistory(data);
