@@ -84,6 +84,74 @@ This overlay is reported separately as `Nasdaq-Overlap-Excluded Top 3` in
 `summary.md`; it does not replace the baseline backtest results unless promoted
 into the execution logic.
 
+## Local Dashboard
+
+Start the local dashboard from the project virtual environment:
+
+```bash
+.venv/bin/python run_webapp.py
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8766/
+```
+
+By default the dashboard binds to `127.0.0.1` on port `8766`. Override the host
+or port with environment variables:
+
+```bash
+TITAN12_HOST=0.0.0.0 TITAN12_PORT=8767 .venv/bin/python run_webapp.py
+```
+
+The dashboard reads the local `outputs/` CSVs and charts. It shows headline
+stats, the Nasdaq-overlap-excluded current basket, the last 12
+Nasdaq-overlap-excluded rebalance baskets, and the recent-rebalances chart.
+
+## Cloudflare Pages Static Deployment
+
+The local dashboard can be exported as static files for Cloudflare Pages:
+
+```bash
+.venv/bin/python scripts/export_static_dashboard.py --output-dir public
+```
+
+The static export writes:
+
+```text
+public/index.html
+public/app.js
+public/dashboard.json
+public/charts/*.png
+```
+
+For automated monthly updates, this repo includes:
+
+```text
+.github/workflows/cloudflare-pages-dashboard.yml
+```
+
+The workflow runs after the US market close on weekdays, checks whether the
+date is the first NYSE-style trading day of the month, then:
+
+1. Builds the approximate Wikipedia historical S&P 500 membership file.
+2. Runs the historical-membership backtest through the current date.
+3. Exports the dashboard to `public/`.
+4. Deploys `public/` to Cloudflare Pages with Wrangler direct upload.
+
+Add these GitHub repository secrets before enabling the workflow:
+
+```text
+CLOUDFLARE_ACCOUNT_ID
+CLOUDFLARE_API_TOKEN
+CLOUDFLARE_PAGES_PROJECT_NAME
+```
+
+The Cloudflare API token needs `Account > Cloudflare Pages > Edit` permission.
+You can also run the workflow manually from GitHub Actions with
+`force_update=true`.
+
 Useful CLI options:
 
 ```bash
@@ -118,6 +186,36 @@ backtest. Rows with missing `end_date` are treated as active.
 Historical membership matters because the current S&P 500 excludes companies
 that were removed, acquired, or failed. Using only current constituents usually
 overstates historical performance.
+
+### Wikipedia History Bootstrap
+
+For a good-enough research bootstrap, build an approximate point-in-time file
+from Wikipedia's current S&P 500 table plus its selected add/remove history:
+
+```bash
+.venv/bin/python scripts/build_wikipedia_sp500_membership.py
+```
+
+This writes:
+
+```text
+data/sp500_membership_wikipedia_history.csv
+```
+
+Review the generated file before promoting it:
+
+```bash
+cp data/sp500_membership.csv data/sp500_membership.current_constituents.csv
+cp data/sp500_membership_wikipedia_history.csv data/sp500_membership.csv
+.venv/bin/python main.py --membership-mode historical_constituents --refresh-data
+```
+
+This Wikipedia-derived file is still approximate. It is better than using only
+today's constituents, but it can have unknown start dates, missing sectors for
+removed companies, ticker-history gaps, and omissions from Wikipedia's selected
+changes table. For production-grade research, use a paid point-in-time index
+constituent source such as CRSP, Compustat/Capital IQ, Bloomberg, Refinitiv,
+Norgate, or another licensed dataset.
 
 ## Outputs
 

@@ -8,5 +8,6 @@ outputs/
 results/
 plots/
 logs/
+public/
 
 .DS_Store

@@ -131,7 +131,7 @@ def _calculate_open_selections(
     """Calculate the current open basket and month-to-date stock returns."""
 
     as_of_date = adj_close.index[adj_close.index <= pd.Timestamp(config.end_date)].max()
-    if pd.isna(as_of_date) or as_of_date <= open_date:
+    if pd.isna(as_of_date) or as_of_date < open_date:
         return pd.DataFrame()
 
     metadata = get_member_metadata(membership, open_date)
@@ -159,7 +159,12 @@ def _calculate_open_selections(
                 "rebalance_date": open_date.date().isoformat(),
                 "as_of_date": as_of_date.date().isoformat(),
                 "ticker": ticker,
+                "company_name": row.get("company_name", ""),
+                "sector": row.get("sector", "Unknown"),
                 "rank": int(row["rank"]),
+                "weighted_momentum_score": row["weighted_momentum_score"],
+                "entry_price": float(entry_price),
+                "as_of_price": float(as_of_price),
                 "stock_return": float(as_of_price / entry_price - 1.0),
             }
         )
@@ -333,6 +338,7 @@ def run_backtest(config: BacktestConfig) -> dict[str, pd.DataFrame]:
             open_selections=open_selections,
             benchmark_label=config.benchmark,
         )
+        save_csv(open_selections, config.output_dir / "open_rebalance_picks.csv")
     write_summary_markdown(
         config.summary_path,
         config,
