@@ -63,6 +63,9 @@ def write_summary_markdown(
     monthly_selections: pd.DataFrame,
     data_quality: pd.DataFrame,
     test_results: str = "Not run by backtest command.",
+    open_selections: pd.DataFrame | None = None,
+    final_selections: pd.DataFrame | None = None,
+    excluded_tickers: list[str] | None = None,
 ) -> None:
     """Write a human-readable run summary to markdown."""
 
@@ -84,6 +87,24 @@ def write_summary_markdown(
         tickers = ", ".join(latest_rows["ticker"].astype(str).tolist())
         latest_rebalance = f"{latest_date}: {tickers}"
         current_basket = tickers
+    # Prefer the open basket (the freshly computed, not-yet-closed rebalance)
+    # over the last completed selection, and stamp it with its rebalance date.
+    if open_selections is not None and not open_selections.empty:
+        open_rows = open_selections.sort_values("rank")
+        open_date = open_rows["rebalance_date"].iloc[0]
+        open_tickers = ", ".join(open_rows["ticker"].astype(str).tolist())
+        current_basket = f"{open_date}: {open_tickers}"
+
+    # The final tradeable basket excludes the sister Nasdaq strategy's top picks.
+    final_basket = "No final basket."
+    if final_selections is not None and not final_selections.empty:
+        final_rows = final_selections.sort_values("rank")
+        final_date = final_rows["rebalance_date"].iloc[0]
+        final_tickers = ", ".join(final_rows["ticker"].astype(str).tolist())
+        final_basket = f"{final_date}: {final_tickers}"
+    elif open_selections is not None and not open_selections.empty:
+        final_basket = current_basket
+    excluded_note = ", ".join(excluded_tickers) if excluded_tickers else "none"
 
     trades_section = ""
     if len(monthly_selections) < 30 and not monthly_selections.empty:
@@ -136,7 +157,13 @@ Data freshness timestamp: {data_freshness}
 
 {latest_rebalance}
 
-## Current Open Basket
+## Final Top 3 (Nasdaq-Overlap Excluded)
+
+{final_basket}
+
+Excluded sister Nasdaq top picks: {excluded_note}
+
+## Baseline Open Basket (pre-exclusion)
 
 {current_basket}
 

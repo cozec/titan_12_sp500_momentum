@@ -1,8 +1,8 @@
 # Titan-12 Momentum Rotation Summary
 
-Run timestamp: 2026-05-25T22:46:01.130128+00:00
+Run timestamp: 2026-08-01T21:26:38.171333+00:00
 
-Data freshness timestamp: 2026-05-01
+Data freshness timestamp: 2026-07-01
 
 
 ## Active Configuration
@@ -10,7 +10,7 @@ Data freshness timestamp: 2026-05-01
 | setting              | value                   |
 |:---------------------|:------------------------|
 | start_date           | 2016-01-01              |
-| end_date             | 2026-05-12              |
+| end_date             | 2026-08-01              |
 | top_n                | 3                       |
 | benchmark            | SPY                     |
 | transaction_cost_bps | 5.0                     |
@@ -21,56 +21,21 @@ Data freshness timestamp: 2026-05-01
 
 |   total_return |     CAGR |   annualized_volatility |   Sharpe_ratio |   Sortino_ratio |   max_drawdown |   Calmar_ratio |   monthly_win_rate |   win_rate_vs_SPY |   average_monthly_return |   median_monthly_return |   best_month |   worst_month |   number_of_rebalances |   average_turnover | average_holding_period   |
 |---------------:|---------:|------------------------:|---------------:|----------------:|---------------:|---------------:|-------------------:|------------------:|-------------------------:|------------------------:|-------------:|--------------:|-----------------------:|-------------------:|:-------------------------|
-|        8.71366 | 0.278628 |                0.400046 |       0.811646 |         1.56194 |      -0.393273 |       0.708485 |           0.558559 |          0.459459 |                0.0270579 |               0.0235812 |     0.414487 |     -0.304786 |                    111 |           0.435435 | 1 month                  |
-
-## Backtest Results Details
-
-This run used the Wikipedia-derived historical membership bootstrap in
-`data/sp500_membership.csv`, replacing the previous current-constituents-only
-file. The previous file was backed up as
-`data/sp500_membership.current_constituents.20260525.csv`.
-
-| metric | value |
-|:--|--:|
-| Initial capital | $100,000 |
-| Final strategy value | $971,366 |
-| Final SPY value | $366,701 |
-| Strategy total return | 871.37% |
-| Strategy CAGR | 27.86% |
-| SPY total return over matched run | 266.70% |
-| Annualized volatility | 40.00% |
-| Sharpe ratio | 0.81 |
-| Sortino ratio | 1.56 |
-| Max drawdown | -39.33% |
-| Monthly win rate | 55.86% |
-| Win rate vs SPY | 45.95% |
-| Average monthly turnover | 43.54% |
-| Completed rebalance periods | 111 |
-
-The latest completed holding period was the April 1, 2026 rebalance through
-May 1, 2026. The strategy returned 41.45% net versus 9.98% for SPY during that
-period.
-
-| ticker | company | rank | entry | exit | return |
-|:--|:--|--:|--:|--:|--:|
-| SNDK | Sandisk | 1 | $692.73 | $1,187.00 | 71.35% |
-| LITE | Lumentum | 2 | $764.65 | $949.93 | 24.23% |
-| CIEN | Ciena | 3 | $415.39 | $535.29 | 28.86% |
-
-Important caveat: this is an improvement over survivorship-biased
-current-constituents testing, but it is not institutional point-in-time data.
-The Wikipedia history has unknown start dates for some removed members, missing
-sector classifications for many historical names, and ticker-history gaps.
-Yahoo Finance also does not provide usable price data for many delisted or
-acquired tickers.
+|        11.6274 | 0.309042 |                 0.40024 |       0.871585 |          1.6781 |      -0.393273 |       0.785821 |           0.566372 |          0.469027 |                0.0290703 |               0.0243899 |     0.414487 |     -0.304786 |                    113 |           0.433628 | 1 month                  |
 
 ## Latest Completed Rebalance
 
-2026-04-01: SNDK, LITE, CIEN
+2026-06-01: SNDK, MU, INTC
 
-## Current Open Basket
+## Final Top 3 (Nasdaq-Overlap Excluded)
 
-SNDK, LITE, CIEN
+2026-07-01: DD, WDC, STX
+
+Excluded sister Nasdaq top picks: SNDK, MU, INTC
+
+## Baseline Open Basket (pre-exclusion)
+
+2026-07-01: SNDK, DD, MU
 
 ## Charts
 
@@ -87,19 +52,60 @@ SNDK, LITE, CIEN
 
 ## Data Quality Notes
 
-Full details are in `logs/data_quality_report.csv`.
-
-| issue_type | count |
-|:--|--:|
-| insufficient_history | 6,040 |
-| missing_price_history | 4,287 |
-| download_failed | 174 |
-| insufficient_selection_count | 13 |
-
-Representative failed Yahoo downloads include ABK, ABMD, ACAS, ACE, ADS, AGN,
-AKS, ALTR, ALXN, ANR, ANSS, APOL, ARG, ARNC, ATVI, AVP, AYE, BCR, BHI, BIG,
-BJS, BRCM, BS, BXLT, CELG, CEPH, CERN, CFN, CHK, and CMA.
+| date   | ticker   | issue_type      | message                       |
+|:-------|:---------|:----------------|:------------------------------|
+|        | ABK      | download_failed | No rows returned by yfinance. |
+|        | ABMD     | download_failed | No rows returned by yfinance. |
+|        | ACAS     | download_failed | No rows returned by yfinance. |
+|        | ACE      | download_failed | No rows returned by yfinance. |
+|        | ADS      | download_failed | No rows returned by yfinance. |
+|        | AGN      | download_failed | No rows returned by yfinance. |
+|        | AKS      | download_failed | No rows returned by yfinance. |
+|        | ALTR     | download_failed | No rows returned by yfinance. |
+|        | ALXN     | download_failed | No rows returned by yfinance. |
+|        | ANR      | download_failed | No rows returned by yfinance. |
+|        | ANSS     | download_failed | No rows returned by yfinance. |
+|        | APOL     | download_failed | No rows returned by yfinance. |
+|        | ARG      | download_failed | No rows returned by yfinance. |
+|        | ARNC     | download_failed | No rows returned by yfinance. |
+|        | ATVI     | download_failed | No rows returned by yfinance. |
+|        | AVP      | download_failed | No rows returned by yfinance. |
+|        | AYE      | download_failed | No rows returned by yfinance. |
+|        | BCR      | download_failed | No rows returned by yfinance. |
+|        | BHI      | download_failed | No rows returned by yfinance. |
+|        | BIG      | download_failed | No rows returned by yfinance. |
+|        | BJS      | download_failed | No rows returned by yfinance. |
+|        | BRCM     | download_failed | No rows returned by yfinance. |
+|        | BS       | download_failed | No rows returned by yfinance. |
+|        | BXLT     | download_failed | No rows returned by yfinance. |
+|        | CELG     | download_failed | No rows returned by yfinance. |
+|        | CEPH     | download_failed | No rows returned by yfinance. |
+|        | CERN     | download_failed | No rows returned by yfinance. |
+|        | CFN      | download_failed | No rows returned by yfinance. |
+|        | CHK      | download_failed | No rows returned by yfinance. |
+|        | CMA      | download_failed | No rows returned by yfinance. |
+|        | CMCSK    | download_failed | No rows returned by yfinance. |
+|        | COV      | download_failed | No rows returned by yfinance. |
+|        | CPGX     | download_failed | No rows returned by yfinance. |
+|        | CSC      | download_failed | No rows returned by yfinance. |
+|        | CTLT     | download_failed | No rows returned by yfinance. |
+|        | CTX      | download_failed | No rows returned by yfinance. |
+|        | CTXS     | download_failed | No rows returned by yfinance. |
+|        | CVC      | download_failed | No rows returned by yfinance. |
+|        | CVH      | download_failed | No rows returned by yfinance. |
+|        | CXO      | download_failed | No rows returned by yfinance. |
+|        | DAY      | download_failed | No rows returned by yfinance. |
+|        | DF       | download_failed | No rows returned by yfinance. |
+|        | DFS      | download_failed | No rows returned by yfinance. |
+|        | DISCA    | download_failed | No rows returned by yfinance. |
+|        | DISCK    | download_failed | No rows returned by yfinance. |
+|        | DISH     | download_failed | No rows returned by yfinance. |
+|        | DJ       | download_failed | No rows returned by yfinance. |
+|        | DNB      | download_failed | No rows returned by yfinance. |
+|        | DNR      | download_failed | No rows returned by yfinance. |
+|        | DO       | download_failed | No rows returned by yfinance. |
 
 ## Test Results
 
 Not run by backtest command.
+

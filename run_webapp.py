@@ -18,6 +18,7 @@ from urllib.parse import urlparse
 
 import pandas as pd
 
+from src.backtest import _read_nasdaq_excluded_tickers
 from src.config import BacktestConfig
 from src.download_data import load_cached_price_data
 from src.membership import get_eligible_universe, get_member_metadata, load_sp500_membership
@@ -98,13 +99,14 @@ def _stock_return(adj_close: pd.DataFrame, ticker: str, entry_date: object, exit
 def _nasdaq_excluded_history(
     latest_dates: list[pd.Timestamp],
     portfolio: pd.DataFrame,
+    end_date: str = "2026-06-02",
 ) -> list[dict[str, object]]:
     """Build recent rebalance history after excluding same-date Nasdaq picks."""
 
     if not NASDAQ_SELECTIONS_PATH.exists():
         return []
 
-    config = BacktestConfig(end_date="2026-05-17", use_historical_membership=True)
+    config = BacktestConfig(end_date=end_date, use_historical_membership=True)
     membership = load_sp500_membership(config.membership_path)
     tickers = sorted(set(membership["ticker"].dropna().tolist() + [config.benchmark]))
     price_data = load_cached_price_data(
@@ -172,7 +174,7 @@ def _latest_open() -> list[dict[str, object]]:
     path = OUTPUT_DIR / "open_rebalance_picks.csv"
     if not path.exists():
         path = OUTPUT_DIR / "open_may_2026_selection.csv"
-    if not path.exists():
+    if not path.exists() or path.stat().st_size <= 1:
         return []
     open_df = pd.read_csv(path)
     rows = []
@@ -195,10 +197,14 @@ def _latest_open() -> list[dict[str, object]]:
 def _nasdaq_excluded_open() -> dict[str, object]:
     """Return current Nasdaq overlap exclusions and adjusted S&P picks."""
 
-    excluded: list[str] = []
     open_picks = _latest_open()
     open_date = pd.Timestamp(open_picks[0]["date"]).normalize() if open_picks else None
-    if NASDAQ_OPEN_PATH.exists():
+    # Prefer the sister strategy's live open basket (recomputed each request),
+    # which is fresher than its on-disk CSV. Falls back to CSV when offline.
+    excluded: list[str] = _read_nasdaq_excluded_tickers(3)
+    if excluded:
+        pass
+    elif NASDAQ_OPEN_PATH.exists():
         ndx_open = pd.read_csv(NASDAQ_OPEN_PATH)
         excluded = ndx_open.sort_values("rank")["ticker"].astype(str).tolist()
     elif NASDAQ_SELECTIONS_PATH.exists() and open_date is not None:
@@ -274,6 +280,15 @@ def build_dashboard_payload() -> dict[str, object]:
     portfolio = pd.read_csv(OUTPUT_DIR / "portfolio_returns.csv", parse_dates=["rebalance_date", "next_rebalance_date"])
     stats = pd.read_csv(OUTPUT_DIR / "summary_stats.csv").iloc[0]
     latest_dates = sorted(selections["rebalance_date"].drop_duplicates())[-12:]
+
+    open_picks = _latest_open()
+    open_return = None
+    if open_picks:
+        open_return = sum(p["stock_return"] or 0 for p in open_picks) / len(open_picks)
+    # The current open basket's as-of date is the latest trading day priced in,
+    # so it doubles as the true data-freshness marker for the dashboard.
+    data_freshness = open_picks[0]["as_of"] if open_picks else "2026-05-15"
+
     baseline_recent = []
     for date in latest_dates:
         picks = _row_values(selections, date)
@@ -285,17 +300,13 @@ def build_dashboard_payload() -> dict[str, object]:
                 "portfolio_return": sum(p["stock_return"] or 0 for p in picks) / max(len(picks), 1),
             }
         )
-    recent = _nasdaq_excluded_history(latest_dates, portfolio) or baseline_recent
+    recent = _nasdaq_excluded_history(latest_dates, portfolio, end_date=data_freshness) or baseline_recent
 
     recent_portfolio = portfolio[portfolio["rebalance_date"].isin(latest_dates)]
-    open_picks = _latest_open()
-    open_return = None
-    if open_picks:
-        open_return = sum(p["stock_return"] or 0 for p in open_picks) / len(open_picks)
 
     return {
         "computed_at": pd.Timestamp.now().isoformat(timespec="seconds"),
-        "data_freshness": "2026-05-15",
+        "data_freshness": data_freshness,
         "bias_warning": "Approximate historical S&P 500 membership from Wikipedia selected changes.",
         "stats": {
             "cagr": _safe_float(stats["CAGR"]),

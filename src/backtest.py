@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import os
+import urllib.error
+import urllib.request
 from dataclasses import asdict
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -24,12 +29,19 @@ from src.signals import (
     calculate_titan12_score,
     get_first_trading_days,
     prices_to_adj_close_frame,
+    rank_stocks_by_score,
     select_top_n,
 )
 from src.utils import append_quality_issue, save_csv, setup_logging, write_summary_markdown
 
 
 LOGGER = logging.getLogger(__name__)
+
+# Sister Nasdaq strategy open basket, whose top picks are excluded from the
+# final S&P basket for cross-project diversification. Override with NASDAQ_OPEN_PATH.
+DEFAULT_NASDAQ_OPEN_PATH = Path(
+    "/Users/adam/project/momentum_6m_claude/nasdaq100_momentum_backtest/outputs/open_rebalance_picks.csv"
+)
 
 
 def calculate_turnover(
@@ -121,14 +133,69 @@ def _benchmark_return(
     return float(exit_price / entry_price - 1.0)
 
 
+def _nasdaq_excluded_from_api(top_n: int) -> list[str]:
+    """Fetch the sister strategy's live open basket from its dashboard API.
+
+    The sister project recomputes its open basket on every request, so its live
+    dashboard is fresher than its on-disk CSV (which only updates when its own
+    backtest is re-run). Returns an empty list if the server is unreachable.
+    """
+
+    url = os.environ.get("NASDAQ_PICKS_URL", "http://127.0.0.1:8765/api/picks")
+    try:
+        with urllib.request.urlopen(url, timeout=4) as response:  # noqa: S310 - local loopback
+            payload = json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        LOGGER.info("Sister dashboard %s unavailable (%s); will fall back to CSV.", url, exc)
+        return []
+    open_picks = payload.get("open") or []
+    ordered = sorted(open_picks, key=lambda p: p.get("rank", 0))
+    tickers = [str(p["ticker"]) for p in ordered if p.get("ticker")][:top_n]
+    if tickers:
+        LOGGER.info("Excluding sister live open picks from %s: %s", url, tickers)
+    return tickers
+
+
+def _read_nasdaq_excluded_tickers(top_n: int) -> list[str]:
+    """Return the sister Nasdaq strategy's current top-N picks to exclude.
+
+    Prefers the live dashboard (freshest), then falls back to the on-disk CSV.
+    """
+
+    live = _nasdaq_excluded_from_api(top_n)
+    if live:
+        return live
+
+    path = Path(os.environ.get("NASDAQ_OPEN_PATH", str(DEFAULT_NASDAQ_OPEN_PATH)))
+    if not path.exists():
+        LOGGER.info("No Nasdaq open picks at %s; skipping overlap exclusion.", path)
+        return []
+    ndx = pd.read_csv(path)
+    if ndx.empty or "ticker" not in ndx.columns:
+        return []
+    if "rebalance_date" in ndx.columns:
+        latest = ndx["rebalance_date"].max()
+        ndx = ndx[ndx["rebalance_date"] == latest]
+    if "rank" in ndx.columns:
+        ndx = ndx.sort_values("rank")
+    LOGGER.info("Excluding sister CSV picks from %s (CSV fallback).", path)
+    return ndx["ticker"].astype(str).head(top_n).tolist()
+
+
 def _calculate_open_selections(
     config: BacktestConfig,
     membership: pd.DataFrame,
     monthly_returns: pd.DataFrame,
     adj_close: pd.DataFrame,
     open_date: pd.Timestamp,
+    excluded: list[str] | None = None,
 ) -> pd.DataFrame:
-    """Calculate the current open basket and month-to-date stock returns."""
+    """Calculate an open basket and month-to-date stock returns.
+
+    When ``excluded`` is provided, those tickers are dropped from the ranking
+    before taking the top N, so the ``rank`` column keeps each name's original
+    S&P 500 rank (useful for showing how far the basket was backfilled).
+    """
 
     as_of_date = adj_close.index[adj_close.index <= pd.Timestamp(config.end_date)].max()
     if pd.isna(as_of_date) or as_of_date < open_date:
@@ -144,7 +211,11 @@ def _calculate_open_selections(
         eligible_tickers=eligible["ticker"].tolist(),
         metadata=metadata,
     )
-    selected = select_top_n(scores, config.top_n)
+    if excluded:
+        ranked = rank_stocks_by_score(scores)
+        selected = ranked[~ranked["ticker"].isin(excluded)].head(config.top_n).copy()
+    else:
+        selected = select_top_n(scores, config.top_n)
     rows: list[dict[str, object]] = []
     for _, row in selected.iterrows():
         ticker = row["ticker"]
@@ -323,13 +394,19 @@ def run_backtest(config: BacktestConfig) -> dict[str, pd.DataFrame]:
     save_csv(summary_stats, config.output_dir / "summary_stats.csv")
     save_csv(data_quality, config.data_quality_path)
     create_all_charts(portfolio_returns, monthly_selections, config.chart_dir)
+    open_selections = pd.DataFrame()
+    final_selections = pd.DataFrame()
+    nasdaq_excluded: list[str] = []
     if first_trading_days:
+        open_date = first_trading_days[-1]
         open_selections = _calculate_open_selections(
-            config,
-            membership,
-            monthly_returns,
-            adj_close,
-            first_trading_days[-1],
+            config, membership, monthly_returns, adj_close, open_date
+        )
+        # Final basket: drop the sister Nasdaq strategy's current top picks and
+        # backfill from the next-highest S&P names for cross-project diversification.
+        nasdaq_excluded = _read_nasdaq_excluded_tickers(config.top_n)
+        final_selections = _calculate_open_selections(
+            config, membership, monthly_returns, adj_close, open_date, excluded=nasdaq_excluded
         )
         plot_recent_rebalances(
             monthly_selections,
@@ -339,6 +416,7 @@ def run_backtest(config: BacktestConfig) -> dict[str, pd.DataFrame]:
             benchmark_label=config.benchmark,
         )
         save_csv(open_selections, config.output_dir / "open_rebalance_picks.csv")
+        save_csv(final_selections, config.output_dir / "final_rebalance_picks.csv")
     write_summary_markdown(
         config.summary_path,
         config,
@@ -346,6 +424,9 @@ def run_backtest(config: BacktestConfig) -> dict[str, pd.DataFrame]:
         portfolio_returns,
         monthly_selections,
         data_quality,
+        open_selections=open_selections,
+        final_selections=final_selections,
+        excluded_tickers=nasdaq_excluded,
     )
 
     LOGGER.info("Completed Titan-12 run with %s rebalance periods.", len(portfolio_returns))

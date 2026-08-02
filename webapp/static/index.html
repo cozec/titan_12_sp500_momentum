@@ -58,9 +58,10 @@
     </section>
 
     <section class="mb-8">
-      <div class="flex items-center gap-3 mb-3">
+      <div class="flex items-center gap-3 mb-3 flex-wrap">
         <div class="w-2 h-2 rounded-full bg-amber-600"></div>
         <h2 class="text-xs font-semibold uppercase tracking-wider text-zinc-600">Nasdaq-Overlap-Excluded Current Basket</h2>
+        <span id="rebalance-date" class="hidden text-[11px] font-semibold px-2 py-0.5 rounded-full bg-teal-700 text-white"></span>
       </div>
       <p id="overlay-note" class="mb-3 text-xs text-zinc-600"></p>
       <div id="overlay-grid" class="grid grid-cols-1 sm:grid-cols-3 gap-4"></div>
@@ -88,6 +89,6 @@
       Data: Yahoo Finance adjusted close. Universe: approximate historical S&amp;P 500 membership from Wikipedia selected changes. See <code>summary.md</code> for caveats.
     </footer>
   </div>
-  <script src="/app.js?v=nasdaq-overlay-only"></script>
+  <script src="/app.js?v=rebalance-date-badge"></script>
 </body>
 </html>

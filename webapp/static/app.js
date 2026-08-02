@@ -102,6 +102,14 @@ function renderOverlay(data) {
   const excluded = overlay.excluded || [];
   const adjusted = overlay.adjusted || [];
   const maxAbs = Math.max(...adjusted.map(p => Math.abs(p.stock_return || 0)), 0.1);
+  const rebalanceDate = (data.open && data.open.date) || (adjusted[0] && adjusted[0].date);
+  const badge = document.getElementById('rebalance-date');
+  if (rebalanceDate) {
+    badge.textContent = `Rebalanced ${fmtDay(rebalanceDate)}`;
+    badge.classList.remove('hidden');
+  } else {
+    badge.classList.add('hidden');
+  }
   document.getElementById('overlay-note').textContent =
     `Excluded Nasdaq open picks: ${excluded.join(', ') || 'none'}. Backfilled from the next S&P 500 Titan-12 ranks.`;
   document.getElementById('overlay-grid').innerHTML = adjusted

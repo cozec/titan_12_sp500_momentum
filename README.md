@@ -71,18 +71,22 @@ index members for the full past period.
 ## Nasdaq-Overlap Exclusion Overlay
 
 For cross-project diversification against the sister Nasdaq strategy, the
-research summary includes an optional overlay:
+**final** S&P basket excludes the sister's current top picks:
 
-1. Read Nasdaq top-3 picks from
-   `/Users/adam/project/momentum_6m_claude/nasdaq100_momentum_backtest/outputs/monthly_selections.csv`.
-2. For each matching S&P 500 rebalance date, skip any S&P 500 Titan-12 ticker
-   that also appears in the Nasdaq top 3.
+1. Read the sister's current top-3 open picks. The backtest prefers the sister's
+   live dashboard (`http://127.0.0.1:8765/api/picks`, override with
+   `NASDAQ_PICKS_URL`) because that is recomputed each request and stays fresher
+   than its on-disk CSV; if the dashboard is offline it falls back to
+   `.../nasdaq100_momentum_backtest/outputs/open_rebalance_picks.csv`
+   (override with `NASDAQ_OPEN_PATH`).
+2. Drop any of those sister tickers from the S&P 500 Titan-12 ranking.
 3. Backfill from the next-highest S&P 500 Titan-12 ranked names until 3 names
    are selected.
 
-This overlay is reported separately as `Nasdaq-Overlap-Excluded Top 3` in
-`summary.md`; it does not replace the baseline backtest results unless promoted
-into the execution logic.
+The result is written to `outputs/final_rebalance_picks.csv` and reported as
+`Final Top 3 (Nasdaq-Overlap Excluded)` in `summary.md`, alongside the
+pre-exclusion `Baseline Open Basket`. This final basket is the intended
+tradeable set; the dashboard's headline "Current Basket" shows it too.
 
 ## Local Dashboard
 
