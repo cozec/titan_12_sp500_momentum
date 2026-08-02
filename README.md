@@ -17,6 +17,44 @@ score = 1*r_1 + 2*r_2 + ... + 12*r_12
 The newest completed month receives the largest weight. The current partial
 month is never used for signal calculation.
 
+## Lookback Robustness (why 12 months)
+
+The 12-month lookback is kept as-is, and deliberately not tuned. A grid search
+over lookbacks 3M-15M (linear weights `1..N`, all other settings fixed, every
+run aligned to the same 110-rebalance window from 2017-05-01) shows the
+parameter is not identifiable from this data:
+
+| lookback | CAGR | Sharpe | max DD | turnover |
+|---------:|-----:|-------:|-------:|---------:|
+| 3M  | 27.8% | 0.80 | -41.9% | 75.8% |
+| 6M  | 41.8% | 1.05 | -31.2% | 57.0% |
+| 7M  | 31.7% | 0.86 | -33.6% | 56.1% |
+| 10M | 44.0% | 1.02 | -34.3% | 46.7% |
+| 12M | 34.3% | 0.93 | -39.3% | 42.7% |
+| 15M | 26.4% | 0.80 | -43.4% | 35.8% |
+
+Findings:
+
+- **No plateau.** CAGR drops 10.1 points from 6M to 7M, a one-month parameter
+  change. Mean adjacent-neighbour swing across the whole grid is 5.1 points.
+- **Bimodal.** 6M and 10M are two separate peaks with a trough between them,
+  which is the signature of noise rather than structure.
+- **No short-lookback edge.** Averaging grid halves: 3-8M CAGR 34.4% vs 9-15M
+  34.7%; Sharpe 0.920 vs 0.920.
+- **Rankings invert out-of-sample.** Splitting at 2021-12, the Spearman rank
+  correlation between first-half and second-half lookback rankings is **-0.52**.
+  3M ranked best in 2017-2021 and last in 2022-2026; 10M went worst to first.
+
+What *is* robust: every lookback from 3M to 15M beats SPY by a wide margin
+(26-44% CAGR vs 15.2%) with positive alpha, so the momentum signal holds across
+the whole parameter range. Only the specific lookback is unidentifiable. 12M is
+retained because nothing justifies moving off it and it carries meaningfully
+lower turnover (42.7% vs 57.0% at 6M).
+
+Turnover falling monotonically with lookback, and drawdowns of -31% to -45%
+across the entire grid, are both structural: the drawdowns come from top-3
+concentration, not from the lookback choice.
+
 ## Current Research Snapshot
 
 The latest local run used current S&P 500 constituents from Wikipedia. That is
