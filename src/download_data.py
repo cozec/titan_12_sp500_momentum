@@ -39,6 +39,20 @@ def _clean_downloaded_prices(prices: pd.DataFrame) -> pd.DataFrame:
     return prices[PRICE_COLUMNS].dropna(how="all")
 
 
+def _download_ticker_history(ticker: str, start_date: str, end_date: str) -> pd.DataFrame:
+    """Download and normalize a daily price frame for the inclusive date range."""
+
+    downloaded = yf.download(
+        ticker,
+        start=start_date,
+        end=(pd.Timestamp(end_date) + pd.Timedelta(days=1)).date().isoformat(),
+        auto_adjust=False,
+        progress=False,
+        threads=False,
+    )
+    return _clean_downloaded_prices(downloaded)
+
+
 def download_price_data(
     tickers: list[str],
     start_date: str,
@@ -47,6 +61,13 @@ def download_price_data(
     refresh: bool = False,
 ) -> tuple[dict[str, pd.DataFrame], pd.DataFrame]:
     """Download or load cached daily adjusted price data for tickers.
+
+    A cached ticker is topped up incrementally: only the rows after the last
+    cached date are fetched and merged into the cache file, so a monthly run
+    pulls just the new tail instead of the full history. Passing ``refresh``
+    forces a full redownload, which is also what re-adjusts historical adjusted
+    closes after splits or dividends (incremental top-up leaves older rows on
+    their previously downloaded adjustment basis).
 
     Parameters
     ----------
@@ -57,7 +78,7 @@ def download_price_data(
     raw_price_dir
         Directory used for one-CSV-per-ticker cache files.
     refresh
-        If true, ignore any existing cache and redownload.
+        If true, ignore any existing cache and redownload the full range.
 
     Returns
     -------
@@ -76,28 +97,37 @@ def download_price_data(
         ticker = normalize_ticker(raw_ticker)
         cache_path = price_cache_path(raw_price_dir, ticker)
         try:
+            cached = None
             if cache_path.exists() and not refresh:
-                prices = pd.read_csv(cache_path, parse_dates=["Date"], index_col="Date")
-                prices.index = pd.to_datetime(prices.index).tz_localize(None).normalize()
-                prices = prices.loc[(prices.index >= start) & (prices.index <= end)]
+                cached = pd.read_csv(cache_path, parse_dates=["Date"], index_col="Date")
+                cached.index = pd.to_datetime(cached.index).tz_localize(None).normalize()
+
+            if cached is not None and not cached.empty:
+                last_cached = cached.index.max()
+                if last_cached < end:
+                    LOGGER.info("Updating %s from %s", ticker, last_cached.date())
+                    # Re-fetch from the last cached day (inclusive) so the merge
+                    # overwrites that day with its settled values and appends the gap.
+                    fresh_tail = _download_ticker_history(
+                        ticker, last_cached.date().isoformat(), end_date
+                    )
+                    if not fresh_tail.empty:
+                        combined = pd.concat([cached, fresh_tail])
+                        combined = combined[~combined.index.duplicated(keep="last")].sort_index()
+                        combined.to_csv(cache_path)
+                        cached = combined
+                prices = cached
             else:
                 LOGGER.info("Downloading %s", ticker)
-                downloaded = yf.download(
-                    ticker,
-                    start=start_date,
-                    end=(end + pd.Timedelta(days=1)).date().isoformat(),
-                    auto_adjust=False,
-                    progress=False,
-                    threads=False,
-                )
-                prices = _clean_downloaded_prices(downloaded)
+                prices = _download_ticker_history(ticker, start_date, end_date)
                 if prices.empty:
                     append_quality_issue(
                         issues, ticker, "download_failed", "No rows returned by yfinance."
                     )
                     continue
                 prices.to_csv(cache_path)
-                prices = prices.loc[(prices.index >= start) & (prices.index <= end)]
+
+            prices = prices.loc[(prices.index >= start) & (prices.index <= end)]
 
             if prices.empty:
                 append_quality_issue(
