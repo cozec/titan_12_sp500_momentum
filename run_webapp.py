@@ -18,7 +18,7 @@ from urllib.parse import urlparse
 
 import pandas as pd
 
-from src.backtest import _read_nasdaq_excluded_tickers
+from src.backtest import _nasdaq_history_from_api, _read_nasdaq_excluded_tickers
 from src.config import BacktestConfig
 from src.download_data import load_cached_price_data
 from src.membership import get_eligible_universe, get_member_metadata, load_sp500_membership
@@ -103,7 +103,11 @@ def _nasdaq_excluded_history(
 ) -> list[dict[str, object]]:
     """Build recent rebalance history after excluding same-date Nasdaq picks."""
 
-    if not NASDAQ_SELECTIONS_PATH.exists():
+    # The sister dashboard is authoritative for recent months; its selections CSV
+    # lags until its own backtest re-runs, and a date missing there would silently
+    # render an unexcluded basket under the overlap-excluded heading.
+    live_history = _nasdaq_history_from_api()
+    if not NASDAQ_SELECTIONS_PATH.exists() and not live_history:
         return []
 
     config = BacktestConfig(end_date=end_date, use_historical_membership=True)
@@ -119,7 +123,11 @@ def _nasdaq_excluded_history(
     monthly_returns = calculate_monthly_returns(
         calculate_month_end_prices(adj_close.drop(columns=[config.benchmark], errors="ignore"))
     )
-    nasdaq_selections = pd.read_csv(NASDAQ_SELECTIONS_PATH, parse_dates=["rebalance_date"])
+    nasdaq_selections = (
+        pd.read_csv(NASDAQ_SELECTIONS_PATH, parse_dates=["rebalance_date"])
+        if NASDAQ_SELECTIONS_PATH.exists()
+        else pd.DataFrame(columns=["rebalance_date", "ticker"])
+    )
 
     history: list[dict[str, object]] = []
     for date in latest_dates:
@@ -128,7 +136,7 @@ def _nasdaq_excluded_history(
         if portfolio_row.empty:
             continue
         exit_date = pd.Timestamp(portfolio_row["next_rebalance_date"].iloc[0]).normalize()
-        excluded = nasdaq_selections[
+        excluded = live_history.get(date) or nasdaq_selections[
             nasdaq_selections["rebalance_date"].eq(date)
         ]["ticker"].astype(str).tolist()
         metadata = get_member_metadata(membership, date)

@@ -156,6 +156,32 @@ def _nasdaq_excluded_from_api(top_n: int) -> list[str]:
     return tickers
 
 
+def _nasdaq_history_from_api() -> dict[pd.Timestamp, list[str]]:
+    """Fetch the sister strategy's completed baskets keyed by rebalance date.
+
+    Same freshness rationale as :func:`_nasdaq_excluded_from_api`: the sister
+    dashboard recomputes on every request, while its on-disk selections CSV only
+    changes when its own backtest re-runs, so recent months are often missing
+    from the CSV entirely. Returns an empty mapping if the server is unreachable.
+    """
+
+    url = os.environ.get("NASDAQ_PICKS_URL", "http://127.0.0.1:8765/api/picks")
+    try:
+        with urllib.request.urlopen(url, timeout=4) as response:  # noqa: S310 - local loopback
+            payload = json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        LOGGER.info("Sister dashboard %s unavailable (%s); will fall back to CSV.", url, exc)
+        return {}
+    ranked: dict[pd.Timestamp, list[tuple[int, str]]] = {}
+    for row in payload.get("completed") or []:
+        ticker = row.get("ticker")
+        if not row.get("date") or not ticker:
+            continue
+        date = pd.Timestamp(row["date"]).normalize()
+        ranked.setdefault(date, []).append((int(row.get("rank", 0)), str(ticker)))
+    return {date: [ticker for _, ticker in sorted(rows)] for date, rows in ranked.items()}
+
+
 def _read_nasdaq_excluded_tickers(top_n: int) -> list[str]:
     """Return the sister Nasdaq strategy's current top-N picks to exclude.
 
