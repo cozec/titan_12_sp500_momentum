@@ -1,8 +1,8 @@
 # Titan-12 Momentum Rotation Summary
 
-Run timestamp: 2026-08-01T21:26:38.171333+00:00
+Run timestamp: 2026-08-12T20:44:20.250861+00:00
 
-Data freshness timestamp: 2026-07-01
+Data freshness timestamp: 2026-08-03
 
 
 ## Active Configuration
@@ -10,7 +10,7 @@ Data freshness timestamp: 2026-07-01
 | setting              | value                   |
 |:---------------------|:------------------------|
 | start_date           | 2016-01-01              |
-| end_date             | 2026-08-01              |
+| end_date             | 2026-08-12              |
 | top_n                | 3                       |
 | benchmark            | SPY                     |
 | transaction_cost_bps | 5.0                     |
@@ -21,21 +21,21 @@ Data freshness timestamp: 2026-07-01
 
 |   total_return |     CAGR |   annualized_volatility |   Sharpe_ratio |   Sortino_ratio |   max_drawdown |   Calmar_ratio |   monthly_win_rate |   win_rate_vs_SPY |   average_monthly_return |   median_monthly_return |   best_month |   worst_month |   number_of_rebalances |   average_turnover | average_holding_period   |
 |---------------:|---------:|------------------------:|---------------:|----------------:|---------------:|---------------:|-------------------:|------------------:|-------------------------:|------------------------:|-------------:|--------------:|-----------------------:|-------------------:|:-------------------------|
-|        11.6274 | 0.309042 |                 0.40024 |       0.871585 |          1.6781 |      -0.393273 |       0.785821 |           0.566372 |          0.469027 |                0.0290703 |               0.0243899 |     0.414487 |     -0.304786 |                    113 |           0.433628 | 1 month                  |
+|        9.34088 | 0.278779 |                0.404256 |       0.808208 |         1.53621 |      -0.393273 |        0.70887 |           0.561404 |          0.464912 |                0.0272269 |               0.0239855 |     0.414487 |     -0.304786 |                    114 |           0.432749 | 1 month                  |
 
 ## Latest Completed Rebalance
 
-2026-06-01: SNDK, MU, INTC
+2026-07-01: SNDK, DD, MU
 
 ## Final Top 3 (Nasdaq-Overlap Excluded)
 
-2026-07-01: DD, WDC, STX
+2026-08-03: DD, MU, DELL
 
-Excluded sister Nasdaq top picks: SNDK, MU, INTC
+Excluded sister Nasdaq top picks: SNDK, MRVL, INTC
 
 ## Baseline Open Basket (pre-exclusion)
 
-2026-07-01: SNDK, DD, MU
+2026-08-03: SNDK, DD, MU
 
 ## Charts
 
