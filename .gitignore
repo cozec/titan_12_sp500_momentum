@@ -11,3 +11,4 @@ logs/
 public/
 
 .DS_Store
+.gstack/
