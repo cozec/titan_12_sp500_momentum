@@ -147,9 +147,9 @@ or port with environment variables:
 TITAN12_HOST=0.0.0.0 TITAN12_PORT=8767 .venv/bin/python run_webapp.py
 ```
 
-The dashboard reads the local `outputs/` CSVs and charts. It shows headline
-stats, the Nasdaq-overlap-excluded current basket, the last 12
-Nasdaq-overlap-excluded rebalance baskets, and the recent-rebalances chart.
+The dashboard reads the local `outputs/` CSVs. It shows headline stats, the
+Nasdaq-overlap-excluded current basket, and the last 12 Nasdaq-overlap-excluded
+rebalance baskets.
 
 ## Cloudflare Pages Static Deployment
 
