@@ -168,14 +168,16 @@ public/dashboard.json
 public/charts/*.png
 ```
 
-For automated monthly updates, this repo includes:
+For automated daily updates, this repo includes:
 
 ```text
 .github/workflows/cloudflare-pages-dashboard.yml
 ```
 
-The workflow runs after the US market close on weekdays, checks whether the
-date is the first NYSE-style trading day of the month, then:
+The workflow runs after the US market close on every weekday and rebuilds the
+whole dashboard each time. The basket only rolls over on the first NYSE-style
+trading day of the month, but the daily rebuild keeps the month-to-date returns
+current instead of freezing them at the 0% they show on rebalance day. Each run:
 
 1. Builds the approximate Wikipedia historical S&P 500 membership file.
 2. Checks out `cozec/momentum_6month_claude` and runs the Nasdaq source
@@ -195,8 +197,8 @@ CLOUDFLARE_PAGES_PROJECT_NAME
 The Cloudflare API token needs `Account > Cloudflare Pages > Edit` permission.
 If the Nasdaq repo is private, also add `NASDAQ_REPO_TOKEN` with read access to
 `cozec/momentum_6month_claude`; public repos do not need this extra token.
-You can also run the workflow manually from GitHub Actions with
-`force_update=true`.
+You can also run the workflow manually from GitHub Actions, optionally passing
+`end_date` to rebuild the dashboard as of an earlier date.
 
 Useful CLI options:
 

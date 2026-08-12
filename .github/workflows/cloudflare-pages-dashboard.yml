@@ -3,17 +3,14 @@ name: Cloudflare Pages dashboard update
 on:
   workflow_dispatch:
     inputs:
-      force_update:
-        description: "Run even if today is not the first trading day"
-        required: false
-        default: "true"
       end_date:
         description: "Optional backtest end date, YYYY-MM-DD"
         required: false
         default: ""
   schedule:
-    # Runs after the regular US market close on weekdays. The job itself exits
-    # unless the date is the first trading day of the month.
+    # Runs after the regular US market close on every weekday. The basket only
+    # changes on the first trading day of the month, but the month-to-date
+    # returns on the dashboard need a rebuild every session to stay current.
     - cron: "30 22 * * 1-5"
 
 jobs:
@@ -45,21 +42,17 @@ jobs:
           pip install -r requirements.txt
           pip install -r nasdaq_repo/nasdaq100_momentum_backtest/requirements.txt
 
-      - name: Decide whether to run
+      # Logged for diagnostics only. Every step below runs regardless, so the
+      # dashboard's month-to-date numbers refresh daily; should_run=true marks
+      # the session where the basket itself rolls over to a new rebalance.
+      - name: Detect rebalance day
         id: trading_day
-        run: |
-          FORCE=""
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.force_update }}" = "true" ]; then
-            FORCE="--force"
-          fi
-          python scripts/is_first_trading_day.py $FORCE
+        run: python scripts/is_first_trading_day.py
 
       - name: Build historical membership
-        if: steps.trading_day.outputs.should_run == 'true'
         run: python scripts/build_wikipedia_sp500_membership.py --output data/sp500_membership.csv
 
       - name: Run Nasdaq overlap source backtest
-        if: steps.trading_day.outputs.should_run == 'true'
         working-directory: nasdaq_repo/nasdaq100_momentum_backtest
         run: |
           if [ -n "${{ inputs.end_date }}" ]; then
@@ -104,7 +97,6 @@ jobs:
           PY
 
       - name: Run backtest
-        if: steps.trading_day.outputs.should_run == 'true'
         run: |
           if [ -n "${{ inputs.end_date }}" ]; then
             END_DATE="${{ inputs.end_date }}"
@@ -118,14 +110,12 @@ jobs:
             --refresh-data
 
       - name: Export static dashboard
-        if: steps.trading_day.outputs.should_run == 'true'
         env:
           NASDAQ_SELECTIONS_PATH: ${{ github.workspace }}/nasdaq_repo/nasdaq100_momentum_backtest/outputs/monthly_selections.csv
           NASDAQ_OPEN_PATH: ${{ github.workspace }}/nasdaq_repo/nasdaq100_momentum_backtest/outputs/open_rebalance_picks.csv
         run: python scripts/export_static_dashboard.py --output-dir public
 
       - name: Deploy to Cloudflare Pages
-        if: steps.trading_day.outputs.should_run == 'true'
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
