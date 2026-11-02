@@ -14,11 +14,15 @@ import os
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from typing import Optional
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import pandas as pd
 
-from src.backtest import _nasdaq_history_from_api, _read_nasdaq_excluded_tickers
+from src.backtest import (
+    _nasdaq_excluded_from_api,
+    _nasdaq_history_from_api,
+    _read_nasdaq_excluded_tickers,
+)
 from src.config import BacktestConfig
 from src.download_data import load_cached_price_data
 from src.membership import get_eligible_universe, get_member_metadata, load_sp500_membership
@@ -35,6 +39,32 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 STATIC_DIR = PROJECT_ROOT / "webapp" / "static"
 OUTPUT_DIR = PROJECT_ROOT / "outputs"
 CHART_DIR = OUTPUT_DIR / "charts"
+# Dashboard tabs. Only the S&P 500 tab applies the sister Nasdaq-overlap
+# exclusion; the Nasdaq-100 tab shows the plain Titan-12 ranking.
+UNIVERSES = {
+    "sp500": {
+        "label": "S&P 500",
+        "benchmark": "SPY",
+        "output_dir": OUTPUT_DIR,
+        "excludes_sister": True,
+        "bias_warning": (
+            "Approximate historical S&P 500 membership from Wikipedia selected "
+            "changes. Results still depend on Yahoo Finance data availability "
+            "for removed tickers."
+        ),
+    },
+    "nasdaq100": {
+        "label": "Nasdaq-100",
+        "benchmark": "QQQ",
+        "output_dir": OUTPUT_DIR / "nasdaq100",
+        "excludes_sister": False,
+        "bias_warning": (
+            "Point-in-time Nasdaq-100 membership borrowed from the sister "
+            "project. About 29 former members Yahoo no longer prices (CELG, "
+            "XLNX, ATVI, ...) are missing, so some survivorship bias remains."
+        ),
+    },
+}
 DEFAULT_NASDAQ_ROOT = Path(
     "/Users/adam/project/momentum_6m_claude/nasdaq100_momentum_backtest"
 )
@@ -176,12 +206,12 @@ def _nasdaq_excluded_history(
     return history
 
 
-def _latest_open() -> list[dict[str, object]]:
+def _latest_open(output_dir: Path = OUTPUT_DIR) -> list[dict[str, object]]:
     """Load current open picks if the generated file exists."""
 
-    path = OUTPUT_DIR / "open_rebalance_picks.csv"
+    path = output_dir / "open_rebalance_picks.csv"
     if not path.exists():
-        path = OUTPUT_DIR / "open_may_2026_selection.csv"
+        path = output_dir / "open_may_2026_selection.csv"
     if not path.exists() or path.stat().st_size <= 1:
         return []
     open_df = pd.read_csv(path)
@@ -200,6 +230,67 @@ def _latest_open() -> list[dict[str, object]]:
             }
         )
     return rows
+
+
+def _next_picks(output_dir: Path, excludes_sister: bool) -> dict[str, object]:
+    """Load the upcoming, signal-locked basket written by the backtest.
+
+    The S&P 500 tab shows the overlap-excluded basket; other tabs the baseline.
+    Returns empty picks when no next basket is locked yet.
+    """
+
+    name = "next_final_rebalance_picks.csv" if excludes_sister else "next_rebalance_picks.csv"
+    path = output_dir / name
+    if not path.exists() or path.stat().st_size <= 1:
+        return {"picks": [], "date": None, "as_of": None, "excluded": []}
+    next_df = pd.read_csv(path).sort_values("rank")
+    picks = [
+        {
+            "ticker": row["ticker"],
+            "rank": int(row["rank"]),
+            "sector": row.get("sector", "Unknown"),
+            "score": _safe_float(row.get("weighted_momentum_score")),
+            "entry_price_estimate": _safe_float(row.get("entry_price_estimate")),
+        }
+        for _, row in next_df.iterrows()
+    ]
+    excluded = _nasdaq_excluded_from_api(3, basket="next") if excludes_sister else []
+    return {
+        "picks": picks,
+        "date": next_df["rebalance_date"].iloc[0],
+        "as_of": next_df["as_of_date"].iloc[0],
+        "excluded": excluded,
+    }
+
+
+def _top20(output_dir: Path) -> dict[str, object]:
+    """Load the plain top-20 Titan-12 ranking written by the backtest."""
+
+    path = output_dir / "top20_ranking.csv"
+    if not path.exists() or path.stat().st_size <= 1:
+        return {"rows": [], "rank_date": None, "as_of": None}
+    board = pd.read_csv(path).sort_values("rank")
+    rows = [
+        {
+            "rank": int(row["rank"]),
+            "ticker": row["ticker"],
+            "company": row.get("company_name", ""),
+            "sector": row.get("sector", "Unknown"),
+            "held": bool(row["held"]),
+            "score": _safe_float(row["weighted_momentum_score"]),
+            "prev_rank": _safe_float(row["prev_rank"]),
+            "rank_change": _safe_float(row["rank_change"]),
+            "latest_price": _safe_float(row["latest_price"]),
+            "ret_1m": _safe_float(row["ret_1m"]),
+            "off_6m_high": _safe_float(row["off_6m_high"]),
+        }
+        for _, row in board.iterrows()
+    ]
+    return {
+        "rows": rows,
+        "rank_date": board["rank_date"].iloc[0],
+        "as_of": board["as_of_date"].iloc[0],
+    }
 
 
 def _nasdaq_excluded_open() -> dict[str, object]:
@@ -281,15 +372,21 @@ def _nasdaq_excluded_open() -> dict[str, object]:
     return {"excluded": excluded, "adjusted": adjusted}
 
 
-def build_dashboard_payload() -> dict[str, object]:
-    """Build the JSON payload consumed by the local dashboard."""
+def build_dashboard_payload(universe: str = "sp500") -> dict[str, object]:
+    """Build the JSON payload consumed by the local dashboard.
 
-    selections = pd.read_csv(OUTPUT_DIR / "monthly_selections.csv", parse_dates=["rebalance_date"])
-    portfolio = pd.read_csv(OUTPUT_DIR / "portfolio_returns.csv", parse_dates=["rebalance_date", "next_rebalance_date"])
-    stats = pd.read_csv(OUTPUT_DIR / "summary_stats.csv").iloc[0]
+    Args:
+        universe: Dashboard tab to build, a key of ``UNIVERSES``.
+    """
+
+    settings = UNIVERSES[universe]
+    output_dir = settings["output_dir"]
+    selections = pd.read_csv(output_dir / "monthly_selections.csv", parse_dates=["rebalance_date"])
+    portfolio = pd.read_csv(output_dir / "portfolio_returns.csv", parse_dates=["rebalance_date", "next_rebalance_date"])
+    stats = pd.read_csv(output_dir / "summary_stats.csv").iloc[0]
     latest_dates = sorted(selections["rebalance_date"].drop_duplicates())[-12:]
 
-    open_picks = _latest_open()
+    open_picks = _latest_open(output_dir)
     open_return = None
     if open_picks:
         open_return = sum(p["stock_return"] or 0 for p in open_picks) / len(open_picks)
@@ -308,14 +405,27 @@ def build_dashboard_payload() -> dict[str, object]:
                 "portfolio_return": sum(p["stock_return"] or 0 for p in picks) / max(len(picks), 1),
             }
         )
-    recent = _nasdaq_excluded_history(latest_dates, portfolio, end_date=data_freshness) or baseline_recent
+    recent = baseline_recent
+    overlay = {"excluded": [], "adjusted": open_picks}
+    if settings["excludes_sister"]:
+        recent = (
+            _nasdaq_excluded_history(latest_dates, portfolio, end_date=data_freshness)
+            or baseline_recent
+        )
+        overlay = _nasdaq_excluded_open()
 
     recent_portfolio = portfolio[portfolio["rebalance_date"].isin(latest_dates)]
 
     return {
         "computed_at": pd.Timestamp.now().isoformat(timespec="seconds"),
         "data_freshness": data_freshness,
-        "bias_warning": "Approximate historical S&P 500 membership from Wikipedia selected changes.",
+        "universe": {
+            "id": universe,
+            "label": settings["label"],
+            "benchmark": settings["benchmark"],
+            "excludes_sister": settings["excludes_sister"],
+        },
+        "bias_warning": settings["bias_warning"],
         "stats": {
             "cagr": _safe_float(stats["CAGR"]),
             "sharpe": _safe_float(stats["Sharpe_ratio"]),
@@ -332,7 +442,7 @@ def build_dashboard_payload() -> dict[str, object]:
             "months": len(recent),
             "strategy_return": _safe_float(pd.Series([r["portfolio_return"] for r in recent]).add(1).prod() - 1),
             "spy_return": _safe_float((1 + recent_portfolio["spy_return"]).prod() - 1),
-            "mode": "Nasdaq-overlap-excluded",
+            "mode": "Nasdaq-overlap-excluded" if settings["excludes_sister"] else "Baseline",
         },
         "open": {
             "picks": open_picks,
@@ -340,12 +450,17 @@ def build_dashboard_payload() -> dict[str, object]:
             "date": open_picks[0]["date"] if open_picks else None,
             "as_of": open_picks[0]["as_of"] if open_picks else None,
         },
+        "next": _next_picks(output_dir, settings["excludes_sister"]),
+        "top20": _top20(output_dir),
         "recent": recent,
-        "nasdaq_overlay": _nasdaq_excluded_open(),
+        "nasdaq_overlay": overlay,
         "charts": {
-            "recent_rebalances": "/charts/recent_rebalances.png",
-            "equity_curve": "/charts/equity_curve_vs_spy.png",
-            "drawdown": "/charts/drawdown_curve.png",
+            name: f"/charts/{universe}/{file}"
+            for name, file in [
+                ("recent_rebalances", "recent_rebalances.png"),
+                ("equity_curve", "equity_curve_vs_spy.png"),
+                ("drawdown", "drawdown_curve.png"),
+            ]
         },
     }
 
@@ -365,9 +480,21 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self.path = "/index.html"
             return SimpleHTTPRequestHandler.do_GET(self)
         if parsed.path == "/api/dashboard":
-            return self._send_json(build_dashboard_payload())
+            universe = parse_qs(parsed.query).get("universe", ["sp500"])[0]
+            if universe not in UNIVERSES:
+                self.send_error(400, f"Unknown universe: {universe}")
+                return
+            return self._send_json(build_dashboard_payload(universe))
         if parsed.path.startswith("/charts/"):
-            chart = CHART_DIR / parsed.path.removeprefix("/charts/")
+            # /charts/<universe>/<file>; bare /charts/<file> keeps serving S&P 500.
+            universe, _, name = parsed.path.removeprefix("/charts/").partition("/")
+            if universe in UNIVERSES and name:
+                chart = UNIVERSES[universe]["output_dir"] / "charts" / name
+            else:
+                chart = CHART_DIR / parsed.path.removeprefix("/charts/")
+            if not chart.resolve().is_relative_to(OUTPUT_DIR.resolve()):
+                self.send_error(404, "File not found")
+                return
             return self._send_file(chart)
         return SimpleHTTPRequestHandler.do_GET(self)
 

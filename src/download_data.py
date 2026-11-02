@@ -13,6 +13,9 @@ from src.utils import append_quality_issue, normalize_ticker
 
 LOGGER = logging.getLogger(__name__)
 PRICE_COLUMNS = ["Open", "High", "Low", "Close", "Adj Close", "Volume"]
+# A refresh whose history starts this much later than the cached file is
+# treated as truncated (e.g. a post-merger stub) and the cache is kept.
+REFRESH_TRUNCATION_TOLERANCE = pd.Timedelta(days=30)
 
 
 def price_cache_path(raw_price_dir: Path, ticker: str) -> Path:
@@ -78,7 +81,10 @@ def download_price_data(
     raw_price_dir
         Directory used for one-CSV-per-ticker cache files.
     refresh
-        If true, ignore any existing cache and redownload the full range.
+        If true, redownload the full range instead of topping up the cache.
+        The cache is kept, and the issue logged, when the redownload comes
+        back empty or starts more than ``REFRESH_TRUNCATION_TOLERANCE`` after
+        the cached history, since Yahoo drops or stubs delisted tickers.
 
     Returns
     -------
@@ -120,12 +126,38 @@ def download_price_data(
             else:
                 LOGGER.info("Downloading %s", ticker)
                 prices = _download_ticker_history(ticker, start_date, end_date)
-                if prices.empty:
+                previous = None
+                if refresh and cache_path.exists():
+                    previous = pd.read_csv(
+                        cache_path, parse_dates=["Date"], index_col="Date"
+                    )
+                    previous.index = (
+                        pd.to_datetime(previous.index).tz_localize(None).normalize()
+                    )
+                if (
+                    previous is not None
+                    and not previous.empty
+                    and (
+                        prices.empty
+                        or prices.index.min()
+                        > previous.index.min() + REFRESH_TRUNCATION_TOLERANCE
+                    )
+                ):
+                    append_quality_issue(
+                        issues,
+                        ticker,
+                        "refresh_kept_cache",
+                        "Redownload was empty or truncated; kept cached history "
+                        f"from {previous.index.min().date()}.",
+                    )
+                    prices = previous
+                elif prices.empty:
                     append_quality_issue(
                         issues, ticker, "download_failed", "No rows returned by yfinance."
                     )
                     continue
-                prices.to_csv(cache_path)
+                else:
+                    prices.to_csv(cache_path)
 
             prices = prices.loc[(prices.index >= start) & (prices.index <= end)]
 

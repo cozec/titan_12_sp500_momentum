@@ -106,6 +106,26 @@ python main.py --membership-mode current_constituents
 That mode is survivorship-biased for historical testing because it uses today's
 index members for the full past period.
 
+## Nasdaq-100 Universe
+
+The same Titan-12 rules (12-month weighted momentum, top 3, monthly, 10 bps
+costs) can run on the point-in-time Nasdaq-100, benchmarked against QQQ. The
+universe is borrowed from the sister project
+(`momentum_6m_claude/nasdaq100_momentum_backtest`):
+
+```bash
+.venv/bin/python scripts/import_sister_nasdaq100.py   # membership + missing prices
+.venv/bin/python main.py --universe nasdaq100 --end-date 2026-10-11
+```
+
+The import writes `data/nasdaq100_membership.csv` and copies any price files the
+local cache lacks (QQQ and Nasdaq-only names such as ASML, MELI, MSTR). The run
+writes to `outputs/nasdaq100/` and `summary_nasdaq100.md`, so it never touches
+the S&P 500 results. It does not apply the sister-overlap exclusion, since it is
+itself a Nasdaq strategy. About 29 former Nasdaq-100 members that Yahoo no
+longer prices (CELG, XLNX, ATVI, ...) are missing, so some survivorship bias
+remains.
+
 ## Nasdaq-Overlap Exclusion Overlay
 
 For cross-project diversification against the sister Nasdaq strategy, the
@@ -147,9 +167,13 @@ or port with environment variables:
 TITAN12_HOST=0.0.0.0 TITAN12_PORT=8767 .venv/bin/python run_webapp.py
 ```
 
-The dashboard reads the local `outputs/` CSVs. It shows headline stats, the
-Nasdaq-overlap-excluded current basket, and the last 12 Nasdaq-overlap-excluded
-rebalance baskets.
+The dashboard has two tabs, S&P 500 and Nasdaq-100 (`/#sp500`, `/#nasdaq100`;
+the API is `/api/dashboard?universe=nasdaq100`). The S&P 500 tab reads
+`outputs/` and shows headline stats, the Nasdaq-overlap-excluded current basket,
+and the last 12 Nasdaq-overlap-excluded rebalance baskets. The Nasdaq-100 tab
+reads `outputs/nasdaq100/` and shows the plain Titan-12 basket and history
+versus QQQ. The S&P 500 exclusions come from the sister dashboard on port 8765;
+if it is offline, recent months fall back to its older CSV.
 
 ## Cloudflare Pages Static Deployment
 
@@ -238,7 +262,9 @@ overstates historical performance.
 ### Wikipedia History Bootstrap
 
 For a good-enough research bootstrap, build an approximate point-in-time file
-from Wikipedia's current S&P 500 table plus its selected add/remove history:
+from Wikipedia's current S&P 500 table plus the add/remove history on the separate
+[Historical components of the S&P 500](https://en.wikipedia.org/wiki/Historical_components_of_the_S%26P_500)
+page:
 
 ```bash
 .venv/bin/python scripts/build_wikipedia_sp500_membership.py

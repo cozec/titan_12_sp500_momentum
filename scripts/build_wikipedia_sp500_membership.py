@@ -1,8 +1,9 @@
 """Build an approximate point-in-time S&P 500 membership file from Wikipedia.
 
 This is a research-grade bootstrap, not institutional point-in-time data. It
-starts with Wikipedia's current S&P 500 constituents, then walks the
-"Selected changes" table backward to infer historical membership intervals.
+starts with Wikipedia's current S&P 500 constituents, then walks the change
+history on the separate "Historical components of the S&P 500" page backward
+to infer historical membership intervals.
 """
 
 from __future__ import annotations
@@ -19,11 +20,19 @@ import requests
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.membership import MEMBERSHIP_COLUMNS, WIKIPEDIA_SP500_URL
+from src.membership import (
+    MEMBERSHIP_COLUMNS,
+    WIKIPEDIA_SP500_CHANGES_URL,
+    WIKIPEDIA_SP500_URL,
+)
 from src.utils import normalize_ticker
 
 
 DEFAULT_OUTPUT = Path("data/sp500_membership_wikipedia_history.csv")
+
+# A column header unique to each table, used to pick it out of its page.
+CURRENT_TABLE_MATCH = "GICS Sector"
+CHANGES_TABLE_MATCH = "Effective Date"
 
 
 @dataclass
@@ -38,7 +47,7 @@ class Interval:
     source: str = WIKIPEDIA_SP500_URL
     notes: str = (
         "Approximate interval inferred from Wikipedia current constituents and "
-        "Selected changes table; validate before production use."
+        "Historical components change table; validate before production use."
     )
 
 
@@ -50,21 +59,57 @@ def _clean_text(value: object) -> str:
 
 
 def _clean_ticker(value: object) -> str:
-    text = _clean_text(value)
+    # Some rows on the changes page carry a trailing wiki table separator,
+    # e.g. "ITT |", which must be stripped before normalizing.
+    text = _clean_text(value).split("|")[0].strip()
     return normalize_ticker(text) if text else ""
 
 
-def _load_wikipedia_tables() -> tuple[pd.DataFrame, pd.DataFrame]:
+def _read_table(url: str, match: str) -> pd.DataFrame:
+    """Fetch a Wikipedia page and return the first table with header ``match``.
+
+    Selecting by column header instead of by position keeps the script from
+    silently reading a navbox or hatnote table when Wikipedia adds one above
+    the table we want. Headers are compared after parsing, because a header
+    such as ``<a>GICS</a> Sector`` spans several HTML text nodes and would
+    not match ``pd.read_html(match=...)``.
+
+    Args:
+        url: Wikipedia page to fetch.
+        match: Column header the wanted table must have, at any header level.
+
+    Returns:
+        The first table on the page with a column header equal to ``match``.
+
+    Raises:
+        RuntimeError: If no table on the page has that column header.
+    """
     response = requests.get(
-        WIKIPEDIA_SP500_URL,
+        url,
         headers={"User-Agent": "Titan-12 Momentum Rotation research script"},
         timeout=30,
     )
     response.raise_for_status()
-    tables = pd.read_html(StringIO(response.text))
-    if len(tables) < 2:
-        raise RuntimeError("Wikipedia S&P 500 page did not expose the expected tables.")
-    return tables[0], tables[1]
+    for table in pd.read_html(StringIO(response.text), flavor="lxml"):
+        headers = {
+            str(part)
+            for col in table.columns
+            for part in (col if isinstance(col, tuple) else (col,))
+        }
+        if match in headers:
+            return table
+    raise RuntimeError(f"No table with column {match!r} found on {url}")
+
+
+def _load_wikipedia_tables() -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Fetch the current constituents table and the change-history table.
+
+    Returns:
+        A ``(current, changes)`` tuple of raw Wikipedia tables.
+    """
+    current = _read_table(WIKIPEDIA_SP500_URL, CURRENT_TABLE_MATCH)
+    changes = _read_table(WIKIPEDIA_SP500_CHANGES_URL, CHANGES_TABLE_MATCH)
+    return current, changes
 
 
 def _current_intervals(current: pd.DataFrame) -> tuple[list[Interval], dict[str, Interval]]:
@@ -82,8 +127,8 @@ def _current_intervals(current: pd.DataFrame) -> tuple[list[Interval], dict[str,
             sector=_clean_text(row["GICS Sector"]) or "Unknown",
             notes=(
                 "Current Wikipedia constituent; start_date from Wikipedia Date added. "
-                "Historical interval adjusted where the Selected changes table "
-                "contains a matching add event."
+                "Historical interval adjusted where the Historical components "
+                "change table contains a matching add event."
             ),
         )
         intervals.append(interval)
@@ -135,6 +180,10 @@ def build_membership() -> pd.DataFrame:
 
         if added_ticker and added_ticker in active:
             active[added_ticker].start_date = effective_date
+            if pd.isna(active[added_ticker].end_date):
+                active[added_ticker].notes += (
+                    f" start_date from {WIKIPEDIA_SP500_CHANGES_URL}."
+                )
             active.pop(added_ticker, None)
 
         if removed_ticker:
@@ -145,8 +194,10 @@ def build_membership() -> pd.DataFrame:
                 start_date=pd.NaT,
                 end_date=effective_date - pd.Timedelta(days=1),
                 sector=sector_by_ticker.get(removed_ticker, "Unknown"),
+                source=WIKIPEDIA_SP500_CHANGES_URL,
                 notes=(
-                    "Removed according to Wikipedia Selected changes table. "
+                    "Removed according to Wikipedia Historical components "
+                    "change table. "
                     f"Reason: {reason}"
                 ).strip(),
             )

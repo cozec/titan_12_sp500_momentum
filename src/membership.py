@@ -14,6 +14,11 @@ from src.utils import normalize_ticker
 
 LOGGER = logging.getLogger(__name__)
 WIKIPEDIA_SP500_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+# Wikipedia split the "Selected changes" table out of the constituents article
+# into its own page, so the two tables are fetched separately.
+WIKIPEDIA_SP500_CHANGES_URL = (
+    "https://en.wikipedia.org/wiki/Historical_components_of_the_S%26P_500"
+)
 MEMBERSHIP_COLUMNS = [
     "ticker",
     "company_name",

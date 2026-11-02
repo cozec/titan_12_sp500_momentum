@@ -1,8 +1,8 @@
-# Titan-12 Momentum Rotation Summary
+# Titan-12 Momentum Rotation Summary (S&P 500)
 
-Run timestamp: 2026-08-12T20:44:20.250861+00:00
+Run timestamp: 2026-11-01T22:25:00.728586+00:00
 
-Data freshness timestamp: 2026-08-03
+Data freshness timestamp: 2026-10-01
 
 
 ## Active Configuration
@@ -10,32 +10,52 @@ Data freshness timestamp: 2026-08-03
 | setting              | value                   |
 |:---------------------|:------------------------|
 | start_date           | 2016-01-01              |
-| end_date             | 2026-08-12              |
+| end_date             | 2026-11-01              |
 | top_n                | 3                       |
 | benchmark            | SPY                     |
 | transaction_cost_bps | 5.0                     |
 | slippage_bps         | 5.0                     |
 | membership_mode      | historical_constituents |
 
+## Strategy Comparison
+
+Start capital $10,000. Buy & hold uses $10,000 x (last_close / first_close) on adjusted closes over the same window. Alpha (annualized) and Beta are versus the benchmark's monthly returns; Sharpe and Alpha assume a 0% risk-free rate.
+
+| Strategy          |   Final Equity |   Return |   CAGR |   Max DD |   Sharpe |   Alpha |   Beta |
+|:------------------|---------------:|---------:|-------:|---------:|---------:|--------:|-------:|
+| Titan-12 Momentum |     116,951.58 | 1069.52% | 28.97% |  -39.33% |     0.83 |  13.62% |   1.30 |
+| SPY Buy & Hold    |      39,072.34 |  290.72% | 15.14% |  -23.79% |     0.95 |   0.00% |   1.00 |
+
 ## Summary Stats
 
 |   total_return |     CAGR |   annualized_volatility |   Sharpe_ratio |   Sortino_ratio |   max_drawdown |   Calmar_ratio |   monthly_win_rate |   win_rate_vs_SPY |   average_monthly_return |   median_monthly_return |   best_month |   worst_month |   number_of_rebalances |   average_turnover | average_holding_period   |
 |---------------:|---------:|------------------------:|---------------:|----------------:|---------------:|---------------:|-------------------:|------------------:|-------------------------:|------------------------:|-------------:|--------------:|-----------------------:|-------------------:|:-------------------------|
-|        9.34088 | 0.278779 |                0.404256 |       0.808208 |         1.53621 |      -0.393273 |        0.70887 |           0.561404 |          0.464912 |                0.0272269 |               0.0239855 |     0.414487 |     -0.304786 |                    114 |           0.432749 | 1 month                  |
+|        10.6952 | 0.289684 |                0.409754 |       0.825915 |         1.45967 |      -0.393272 |       0.736599 |           0.568966 |          0.474138 |                0.0282018 |               0.0246526 |     0.414487 |     -0.304786 |                    116 |           0.428161 | 1 month                  |
 
 ## Latest Completed Rebalance
 
-2026-07-01: SNDK, DD, MU
+2026-09-01: MRNA, SNDK, MU
+
+
+## Next Rebalance 2026-11-02 (signal locked 2026-10-30)
+
+Final: MRNA, SNDK, DELL
+
+Baseline (pre-exclusion): MRNA, SNDK, DELL
+
+Excluded sister Nasdaq next picks: CRWD, MU, PANW
+
+Signal uses monthly returns through the last close; the fill is the next open.
 
 ## Final Top 3 (Nasdaq-Overlap Excluded)
 
-2026-08-03: DD, MU, DELL
+2026-10-01: MRNA, DELL, MRVL
 
-Excluded sister Nasdaq top picks: SNDK, MRVL, INTC
+Excluded sister Nasdaq top picks: MU, INTC, SNDK
 
 ## Baseline Open Basket (pre-exclusion)
 
-2026-08-03: SNDK, DD, MU
+2026-10-01: MRNA, SNDK, DELL
 
 ## Charts
 
@@ -51,6 +71,15 @@ Excluded sister Nasdaq top picks: SNDK, MRVL, INTC
 - outputs/charts/excess_return_vs_spy_over_time.png
 
 ## Data Quality Notes
+
+| issue_type                   |   count |
+|:-----------------------------|--------:|
+| insufficient_history         |    6243 |
+| missing_price_history        |    4290 |
+| download_failed              |     176 |
+| insufficient_selection_count |      13 |
+
+Showing the first 50 of 10,722 issues. Full list: logs/data_quality_report.csv
 
 | date   | ticker   | issue_type      | message                       |
 |:-------|:---------|:----------------|:------------------------------|
@@ -78,6 +107,7 @@ Excluded sister Nasdaq top picks: SNDK, MRVL, INTC
 |        | BRCM     | download_failed | No rows returned by yfinance. |
 |        | BS       | download_failed | No rows returned by yfinance. |
 |        | BXLT     | download_failed | No rows returned by yfinance. |
+|        | CDAY     | download_failed | No rows returned by yfinance. |
 |        | CELG     | download_failed | No rows returned by yfinance. |
 |        | CEPH     | download_failed | No rows returned by yfinance. |
 |        | CERN     | download_failed | No rows returned by yfinance. |
@@ -103,9 +133,8 @@ Excluded sister Nasdaq top picks: SNDK, MRVL, INTC
 |        | DJ       | download_failed | No rows returned by yfinance. |
 |        | DNB      | download_failed | No rows returned by yfinance. |
 |        | DNR      | download_failed | No rows returned by yfinance. |
-|        | DO       | download_failed | No rows returned by yfinance. |
 
 ## Test Results
 
-Not run by backtest command.
+`pytest -q`: 33 passed in 0.62s
 

@@ -18,13 +18,18 @@ def _save_current_figure(path: Path) -> None:
     plt.close()
 
 
-def plot_equity_curve(strategy_returns: pd.Series, benchmark_returns: pd.Series, path: Path) -> None:
+def plot_equity_curve(
+    strategy_returns: pd.Series,
+    benchmark_returns: pd.Series,
+    path: Path,
+    benchmark_label: str = "SPY",
+) -> None:
     """Plot strategy and benchmark equity curves."""
 
     plt.figure(figsize=(10, 5))
     strategy_returns.plot(label="Titan-12")
-    benchmark_returns.plot(label="SPY")
-    plt.title("Equity Curve vs SPY")
+    benchmark_returns.plot(label=benchmark_label)
+    plt.title(f"Equity Curve vs {benchmark_label}")
     plt.ylabel("Portfolio Value")
     plt.legend()
     _save_current_figure(path)
@@ -330,6 +335,7 @@ def create_all_charts(
     portfolio_returns: pd.DataFrame,
     monthly_selections: pd.DataFrame,
     chart_dir: Path,
+    benchmark_label: str = "SPY",
 ) -> None:
     """Create all required charts for a completed backtest."""
 
@@ -345,6 +351,7 @@ def create_all_charts(
         returns["portfolio_value"],
         returns["spy_value"],
         chart_dir / "equity_curve_vs_spy.png",
+        benchmark_label=benchmark_label,
     )
     plot_drawdowns(returns["portfolio_value"], chart_dir / "drawdown_curve.png")
 
@@ -400,6 +407,6 @@ def create_all_charts(
 
     plt.figure(figsize=(10, 4))
     returns["excess_return_vs_spy"].cumsum().plot()
-    plt.title("Excess Return vs SPY Over Time")
+    plt.title(f"Excess Return vs {benchmark_label} Over Time")
     plt.ylabel("Cumulative Excess Return")
     _save_current_figure(chart_dir / "excess_return_vs_spy_over_time.png")

@@ -1,4 +1,9 @@
-"""Export the local dashboard as static Cloudflare Pages assets."""
+"""Export the local dashboard as static assets or a single shareable file.
+
+Default: a static site directory (``public/``). With ``--report``, one
+self-contained ``report.html`` with the data snapshot and script inlined, for
+hosting anywhere (e.g. GitHub Pages) or sending as a file.
+"""
 
 from __future__ import annotations
 
@@ -22,11 +27,43 @@ def parse_args() -> argparse.Namespace:
         default=PROJECT_ROOT / "public",
         help="Directory to write static site assets into.",
     )
+    parser.add_argument(
+        "--report",
+        type=Path,
+        default=None,
+        help="Write a single self-contained HTML report to this path instead.",
+    )
     return parser.parse_args()
+
+
+def write_report(path: Path) -> None:
+    """Write one HTML file with the dashboard snapshot and app.js inlined.
+
+    Args:
+        path: Destination HTML file.
+    """
+
+    static_dir = PROJECT_ROOT / "webapp" / "static"
+    html = (static_dir / "index.html").read_text(encoding="utf-8")
+    script = (static_dir / "app.js").read_text(encoding="utf-8")
+    # "</" would end the inline <script> early; JSON allows the escaped form.
+    data = json.dumps(build_dashboard_payload(), sort_keys=True).replace("</", "<\\/")
+    start = html.index('<script src="/app.js')
+    end = html.index("</script>", start) + len("</script>")
+    inline = (
+        f"<script>window.DASHBOARD_DATA = {data};</script>\n"
+        f"  <script>\n{script}\n  </script>"
+    )
+    html = html[:start] + inline + html[end:]
+    path.write_text(html, encoding="utf-8")
+    print(f"Wrote single-file report to {path}")
 
 
 def main() -> None:
     args = parse_args()
+    if args.report is not None:
+        write_report(args.report)
+        return
     output_dir = args.output_dir
     static_dir = PROJECT_ROOT / "webapp" / "static"
     chart_dir = PROJECT_ROOT / "outputs" / "charts"

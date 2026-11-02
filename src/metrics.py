@@ -78,3 +78,117 @@ def calculate_summary_stats(portfolio_returns: pd.DataFrame) -> pd.DataFrame:
         "average_holding_period": "1 month",
     }
     return pd.DataFrame([stats])
+
+
+def _alpha_beta(
+    returns: pd.Series, benchmark_returns: pd.Series
+) -> tuple[float, float]:
+    """Annualized alpha and beta of monthly returns versus a benchmark.
+
+    Uses an OLS fit of strategy on benchmark monthly returns with a zero
+    risk-free rate, matching the Sharpe convention used in this module.
+    """
+
+    aligned = pd.concat([returns, benchmark_returns], axis=1).dropna()
+    if len(aligned) < 2 or aligned.iloc[:, 1].var(ddof=1) == 0:
+        return np.nan, np.nan
+    strat, bench = aligned.iloc[:, 0], aligned.iloc[:, 1]
+    beta = float(strat.cov(bench) / bench.var(ddof=1))
+    alpha = float((strat.mean() - beta * bench.mean()) * 12)
+    return alpha, beta
+
+
+def calculate_strategy_comparison(
+    portfolio_returns: pd.DataFrame,
+    benchmark_first_price: float,
+    benchmark_last_price: float,
+    benchmark_label: str = "SPY",
+    start_capital: float = 10_000.0,
+) -> pd.DataFrame:
+    """Compare the strategy with benchmark buy & hold from a fixed capital.
+
+    The strategy row compounds monthly net returns from ``start_capital``. The
+    buy & hold row uses ``start_capital * last_price / first_price`` over the
+    same first-entry to last-exit window. Max drawdown includes the starting
+    capital as the first equity point, so a first-month loss counts. Rows are
+    ordered by final equity, highest first.
+
+    Args:
+        portfolio_returns: Backtest rows with ``portfolio_return_net`` and
+            ``spy_return`` columns.
+        benchmark_first_price: Benchmark adjusted close on the first entry
+            date.
+        benchmark_last_price: Benchmark adjusted close on the last exit date.
+        benchmark_label: Display name for the benchmark.
+        start_capital: Starting equity for both rows.
+
+    Returns:
+        One row per strategy with Final Equity, Return, CAGR, Max DD, Sharpe,
+        Alpha and Beta, or an empty frame when there are no returns.
+    """
+
+    if portfolio_returns.empty:
+        return pd.DataFrame()
+
+    returns = pd.to_numeric(
+        portfolio_returns["portfolio_return_net"], errors="coerce"
+    )
+    spy_returns = pd.to_numeric(
+        portfolio_returns["spy_return"], errors="coerce"
+    )
+    years = len(returns) / 12.0
+
+    def _row(name: str, period_returns: pd.Series, final_equity: float,
+             alpha: float, beta: float) -> dict[str, object]:
+        """Build one comparison row from monthly returns and final equity."""
+
+        clean = period_returns.dropna()
+        equity = start_capital * (1.0 + clean).cumprod()
+        equity = pd.concat(
+            [pd.Series([start_capital]), equity], ignore_index=True
+        )
+        total_return = final_equity / start_capital - 1.0
+        cagr = (
+            (1.0 + total_return) ** (1.0 / years) - 1.0
+            if years > 0
+            else np.nan
+        )
+        std = clean.std(ddof=1)
+        sharpe = float(clean.mean() / std * np.sqrt(12)) if std else np.nan
+        return {
+            "Strategy": name,
+            "Final Equity": round(final_equity, 2),
+            "Return": total_return,
+            "CAGR": cagr,
+            "Max DD": _max_drawdown(equity),
+            "Sharpe": sharpe,
+            "Alpha": alpha,
+            "Beta": beta,
+        }
+
+    alpha, beta = _alpha_beta(returns, spy_returns)
+    rows = [
+        _row(
+            "Titan-12 Momentum",
+            returns,
+            float(start_capital * (1.0 + returns.dropna()).prod()),
+            alpha,
+            beta,
+        )
+    ]
+    if pd.notna(benchmark_first_price) and pd.notna(benchmark_last_price):
+        rows.append(
+            _row(
+                f"{benchmark_label} Buy & Hold",
+                spy_returns,
+                float(
+                    start_capital * benchmark_last_price
+                    / benchmark_first_price
+                ),
+                0.0,
+                1.0,
+            )
+        )
+    comparison = pd.DataFrame(rows)
+    comparison = comparison.sort_values("Final Equity", ascending=False)
+    return comparison.reset_index(drop=True)
