@@ -175,6 +175,33 @@ reads `outputs/nasdaq100/` and shows the plain Titan-12 basket and history
 versus QQQ. The S&P 500 exclusions come from the sister dashboard on port 8765;
 if it is offline, recent months fall back to its older CSV.
 
+## Month-End Report and Trades Email
+
+`scripts/month_end.py` (borrowed from the sister project's month-end workflow)
+runs locally via launchd, daily at 4:30 pm PT — after the sister's own
+month-end run at 22:30 UTC. It exits unless today is between the month's last
+NYSE close and the next rebalance, and sends only once per close. When it runs it
+refreshes the sister dashboard (starting it if down), re-runs the S&P 500
+backtest through today, checks the next basket doesn't overlap the sister's,
+rebuilds `report.html`, commits and pushes it (GitHub Pages redeploys), and
+emails the sell / buy / keep trades via Resend with a link to the report.
+
+```bash
+# untracked .env at the project root
+RESEND_API_KEY=re_...
+EMAIL_FROM=onboarding@resend.dev
+EMAIL_TO=you@example.com
+
+cp scripts/com.adam.titan12.monthend.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.adam.titan12.monthend.plist
+
+.venv/bin/python scripts/month_end.py --dry-run --force          # no push, no email
+.venv/bin/python scripts/month_end.py --force --skip-refresh --no-publish  # [TEST] email
+```
+
+Logs go to `logs/launchd.month_end.log`; the email preview to
+`logs/month_end_email.html`.
+
 ## Cloudflare Pages Static Deployment
 
 The local dashboard can be exported as static files for Cloudflare Pages:
